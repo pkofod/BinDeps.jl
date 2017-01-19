@@ -57,7 +57,7 @@ function _library_dependency(context::PackageContext, name; properties...)
             group = v
         end
     end
-    r = LibraryDependency(name,context,Array(@compat(Tuple{DependencyProvider,Dict{Symbol,Any}}),0),Array(@compat(Tuple{DependencyHelper,Dict{Symbol,Any}}),0),(Symbol=>Any)[name => value for (name,value) in properties],validate)
+    r = LibraryDependency(name,context,Array{@compat(Tuple{DependencyProvider,Dict{Symbol,Any}})}(0),Array{@compat(Tuple{DependencyHelper,Dict{Symbol,Any}})}(0),Dict{Symbol=>Any}(name => value for (name,value) in properties),validate)
     if group !== nothing
         push!(group.deps,r)
     else
@@ -278,7 +278,7 @@ end
 
 lower(x::GetSources,collection) = push!(collection,generate_steps(x.dep,gethelper(x.dep,Sources)...))
 
-Autotools(;opts...) = Autotools(nothing, Dict{Any,Any}([k => v for (k,v) in opts]))
+Autotools(;opts...) = Autotools(nothing, Dict{Any,Any}(Dict(k => v for (k,v) in opts)))
 
 export AptGet, Yum, Pacman, Zypper, Sources, Binaries, provides, BuildProcess, Autotools, GetSources, SimpleBuild, available_version
 
@@ -291,8 +291,8 @@ provider{T<:BuildProcess}(::Type{BuildProcess},p::T; opts...) = provider(T,p; op
 @compat provider(::Type{BuildProcess},steps::Union{BuildStep,SynchronousStepCollection}; opts...) = provider(SimpleBuild,steps; opts...)
 provider(::Type{Autotools},a::Autotools; opts...) = a
 
-provides(provider::DependencyProvider,dep::LibraryDependency; opts...) = push!(dep.providers,(provider,(Symbol=>Any)[k=>v for (k,v) in opts]))
-provides(helper::DependencyHelper,dep::LibraryDependency; opts...) = push!(dep.helpers,(helper,(Symbol=>Any)[k=>v for (k,v) in opts]))
+provides(provider::DependencyProvider,dep::LibraryDependency; opts...) = push!(dep.providers,(provider,Dict{Symbol=>Any}(k=>v for (k,v) in opts)))
+provides(helper::DependencyHelper,dep::LibraryDependency; opts...) = push!(dep.helpers,(helper,Dict{Symbol=>Any}(k=>v for (k,v) in opts)))
 provides{T}(::Type{T},p,dep::LibraryDependency; opts...) = provides(provider(T,p; opts...),dep; opts...)
 function provides{T}(::Type{T},packages::AbstractArray,dep::LibraryDependency; opts...)
     for p in packages
@@ -437,13 +437,13 @@ function generate_steps(dep::LibraryDependency, h::Autotools,  provider_opts)
     merge!(opts,h.opts)
     if haskey(opts,:installed_libname)
         !haskey(opts,:installed_libpath) || error("Can't specify both installed_libpath and installed_libname")
-        opts[:installed_libpath] = ByteString[joinpath(libdir(dep),opts[:installed_libname])]
+        opts[:installed_libpath] = @compat(String)[joinpath(libdir(dep),opts[:installed_libname])]
         delete!(opts, :installed_libname)
     elseif !haskey(opts,:installed_libpath)
-        opts[:installed_libpath] = ByteString[joinpath(libdir(dep),x)*"."*dlext for x in stringarray(get(dep.properties,:aliases,ByteString[]))]
+        opts[:installed_libpath] = @compat(String)[joinpath(libdir(dep),x)*"."*dlext for x in stringarray(get(dep.properties,:aliases,@compat(String)[]))]
     end
     if !haskey(opts,:libtarget) && haskey(dep.properties,:aliases)
-        opts[:libtarget] = ByteString[x*"."*dlext for x in stringarray(dep.properties[:aliases])]
+        opts[:libtarget] = @compat(String)[x*"."*dlext for x in stringarray(dep.properties[:aliases])]
     end
     if !haskey(opts,:include_dirs)
         opts[:include_dirs] = AbstractString[]
@@ -465,7 +465,7 @@ function generate_steps(dep::LibraryDependency, h::Autotools,  provider_opts)
     unshift!(opts[:lib_dirs],libdir(dep))
     unshift!(opts[:rpath_dirs],libdir(dep))
     unshift!(opts[:pkg_config_dirs],joinpath(libdir(dep),"pkgconfig"))
-    env = Dict{ByteString,ByteString}()
+    env = Dict{@compat(String),@compat(String)}()
     env["PKG_CONFIG_PATH"] = join(opts[:pkg_config_dirs],":")
     delete!(opts,:pkg_config_dirs)
     @unix_only env["PATH"] = bindir(dep)*":"*ENV["PATH"]
@@ -657,7 +657,7 @@ end
 
 issatisfied(dep::LibraryDependency) = !isempty(_find_library(dep))
 
-allf(deps) = [dep => _find_library(dep) for dep in deps.deps]
+allf(deps) = Dict(dep => _find_library(dep) for dep in deps.deps)
 function satisfied_providers(deps::LibraryGroup, allfl = allf(deps))
     viable_providers = nothing
     for dep in deps.deps
@@ -710,7 +710,7 @@ function _find_library(deps::LibraryGroup, allfl = allf(deps); provider = Any)
         end
     end
     p === nothing && error("Given provider does not satisfy the library group")
-    [dep => begin
+    Dict(dep => begin
         thisfl = allfl[dep]
         ret = nothing
         for fl in thisfl
@@ -721,7 +721,7 @@ function _find_library(deps::LibraryGroup, allfl = allf(deps); provider = Any)
         end
         @assert ret != nothing
         ret
-    end for dep in filter(applicable,deps.deps)]
+    end for dep in filter(applicable,deps.deps))
 end
 
 function satisfy!(deps::LibraryGroup, methods = defaults)
